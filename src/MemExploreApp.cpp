@@ -17,19 +17,20 @@ using namespace std;
 
 class MemExploreApp : public AppBasic {
 public:
-  void prepareSettings(Settings *settings);
   void setup();
   void update();
+  void updateLayout();
   void draw();
+  void mouseMove(MouseEvent e);
   void keyDown(KeyEvent e);
   void keyUp(KeyEvent e);
   void resize(ResizeEvent e);
+
 private:
   int      mVolumeDim, mTilesDim;
   size_t   mDataLength;
   uint8_t *mDataPointer;
-  
-  Surface      mTestSurface;
+
   gl::Texture  mTexture;
   gl::GlslProg mProgram;
   gl::Fbo      mFbo;
@@ -38,14 +39,11 @@ private:
   Vec3f       mCameraVel, mCameraAcc;
   Arcball     mCameraArcball;
   
+  Vec2f mMousePos;
+  bool  mIsFullscreen;
+  
   tr1::unordered_set<char> mKeysDown;
 };
-
-void MemExploreApp::prepareSettings(Settings *settings)
-{
-  settings->setFullScreen();
-  settings->setWindowSize(1440, 900);
-}
 
 void MemExploreApp::setup()
 {
@@ -62,30 +60,37 @@ void MemExploreApp::setup()
     console() << e.what() << endl;
   }
   
-  int pixelSize = 4;
-  mFbo = gl::Fbo(getWindowWidth() / pixelSize, getWindowHeight() / pixelSize);
-  
-  mCamera.setPerspective(60.0f, getWindowAspectRatio(), 0.01f, 100.0f);
-  
-  mCameraArcball.setCenter(getWindowCenter());
-  mCameraArcball.setRadius(Vec2f(getWindowSize()).length() * 10.0f);
-  
-  hideCursor();
+  mMousePos = getWindowCenter();
+  mIsFullscreen = false;
 }
 
 void MemExploreApp::resize(ResizeEvent e)
 {
+  updateLayout();
+}
+
+void MemExploreApp::mouseMove(MouseEvent e)
+{
+  mMousePos = e.getPos();
 }
 
 void MemExploreApp::keyDown(KeyEvent e)
 {
-  switch(e.getChar()) {
-    case ' ':
-      delete mDataPointer;
-      mDataPointer = new uint8_t;
-      break;
+  if(e.getCode() == 27) { // Esc
+    mIsFullscreen = false;
+    setFullScreen(mIsFullscreen);
   }
-  mKeysDown.insert(e.getChar());
+  else if(e.getChar() == 'f') {
+    mIsFullscreen = true;
+    setFullScreen(mIsFullscreen);
+  }
+  else if(e.getChar() == ' ') {
+    delete mDataPointer;
+    mDataPointer = new uint8_t;
+  }
+  else {
+    mKeysDown.insert(e.getChar());
+  }
 }
 
 void MemExploreApp::keyUp(KeyEvent e)
@@ -93,12 +98,37 @@ void MemExploreApp::keyUp(KeyEvent e)
   mKeysDown.erase(e.getChar());
 }
 
+void MemExploreApp::updateLayout()
+{
+  int pixelSize = 4;
+  mFbo = gl::Fbo(getWindowWidth() / pixelSize, getWindowHeight() / pixelSize);
+  
+  mCamera.setPerspective(60.0f, getWindowAspectRatio(), 0.01f, 100.0f);
+  
+  mCameraArcball.setCenter(getWindowCenter());
+  mCameraArcball.setRadius(mIsFullscreen ? 500.0f
+                                         : Vec2f(getWindowSize()).length() * 10.0f);
+  
+  if(mIsFullscreen) hideCursor();
+  else showCursor();
+}
+
 void MemExploreApp::update()
 {
+  Vec2f center = getWindowCenter();
+
   mCameraArcball.resetQuat();
-  mCameraArcball.mouseDown(getWindowCenter());
-  mCameraArcball.mouseDrag(getWindowSize() - getMousePos());
+  mCameraArcball.mouseDown(center);
+  mCameraArcball.mouseDrag(getWindowSize() - mMousePos);
   mCamera.setOrientation(mCameraArcball.getQuat() * mCamera.getOrientation());
+
+  // Reset mouse position to center of screen
+  if(mIsFullscreen) {
+    Vec2f center = getWindowCenter();
+    CGSetLocalEventsSuppressionInterval(0.0);
+    CGWarpMouseCursorPosition(CGPointMake(center.x, center.y));
+    mMousePos = center;
+  }
 
   float speed = 0.01f;
   Vec3f camX = mCamera.getOrientation() * Vec3f::xAxis() * speed;
